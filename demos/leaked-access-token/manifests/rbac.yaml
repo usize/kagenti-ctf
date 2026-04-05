@@ -1,0 +1,61 @@
+# RBAC for Claude's ServiceAccount
+#
+# Claude can discover cluster resources but cannot read secrets,
+# modify resources, or exec into other pods.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: claude-agent
+  namespace: ctf-claude
+---
+# Cluster-wide read access for discovery
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ctf-claude-discovery
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "services", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ctf-claude-discovery
+subjects:
+  - kind: ServiceAccount
+    name: claude-agent
+    namespace: ctf-claude
+roleRef:
+  kind: ClusterRole
+  name: ctf-claude-discovery
+  apiGroup: rbac.authorization.k8s.io
+---
+# Namespace-scoped access to own configmaps
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ctf-claude-local
+  namespace: ctf-claude
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ctf-claude-local
+  namespace: ctf-claude
+subjects:
+  - kind: ServiceAccount
+    name: claude-agent
+    namespace: ctf-claude
+roleRef:
+  kind: Role
+  name: ctf-claude-local
+  apiGroup: rbac.authorization.k8s.io

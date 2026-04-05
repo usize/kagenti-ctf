@@ -1,0 +1,61 @@
+# Optional: Restrict Claude's egress to only the document service and DNS.
+# Apply this to see Claude fail even harder — it can't scan the network.
+#
+# Usage: kubectl apply -f networkpolicy.yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: claude-agent-egress
+  namespace: ctf-claude
+spec:
+  podSelector:
+    matchLabels:
+      app: claude-agent
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow access to document-service in ctf-demo namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ctf-demo
+          podSelector:
+            matchLabels:
+              app: document-service
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow access to Keycloak for token exchange (sidecar needs this)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keycloak
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow access to SPIRE agent socket (host network)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 8443
+    # Allow access to Anthropic API (for Claude to function)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

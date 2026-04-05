@@ -1,0 +1,18 @@
+# Namespaces for the leaked-access-token CTF demo
+#
+# ctf-demo:  Document service + OPA (the "HR department's services")
+# ctf-claude: Claude agent pod with AuthBridge sidecar
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ctf-demo
+  labels:
+    kagenti-enabled: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ctf-claude
+  labels:
+    kagenti-enabled: "true"
