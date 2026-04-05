@@ -41,11 +41,24 @@ data:
   KEYCLOAK_URL: "http://keycloak-service.keycloak.svc:8080"
   KEYCLOAK_REALM: "ctf"
 ---
-# authproxy-routes — Per-target token exchange routes
+# authproxy-routes — Outbound token exchange routes
 #
-# When Claude makes an outbound HTTP request to document-service,
-# AuthBridge exchanges the leaked user token for a new token with
-# audience=document-service and Claude's identity as azp.
+# Strategy: passthrough-first, catch-all exchange.
+#
+# An AI agent with kubectl access can resolve ClusterIPs and bypass
+# FQDN-based routes. Instead of allowlisting specific hostnames,
+# we denylist known-safe destinations and exchange everything else.
+#
+# Traffic that never reaches the ext-proc (safe by design):
+#   - HTTPS (port 443): TLS passthrough in Envoy, no ext-proc
+#   - Port 8080: excluded from iptables by proxy-init (Keycloak)
+#
+# Traffic that reaches the ext-proc and needs explicit passthrough:
+#   - Metadata service (169.254.169.254): cloud provider, no auth
+#   - Kubernetes API: uses ServiceAccount token, not user JWT
+#
+# Everything else gets token-exchanged regardless of whether the
+# agent uses an FQDN, short name, or raw ClusterIP.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -53,17 +66,23 @@ metadata:
   namespace: ctf-claude
 data:
   routes.yaml: |
-    - host: "document-service.ctf-demo.svc.cluster.local:8081"
-      target_audience: "document-service"
-      token_scopes: "openid document-service-aud"
-    - host: "document-service.ctf-demo.svc.cluster.local"
-      target_audience: "document-service"
-      token_scopes: "openid document-service-aud"
-    - host: "document-service.ctf-demo"
-      target_audience: "document-service"
-      token_scopes: "openid document-service-aud"
-    # Catch requests by ClusterIP (Claude may resolve the IP directly)
-    - host: "*:8081"
+    # --- Passthrough exclusions (first-match-wins) ---
+
+    # Cloud metadata service
+    - host: "169.254.169.254"
+      passthrough: true
+
+    # Kubernetes API server (uses SA token, not user JWT)
+    - host: "kubernetes*"
+      passthrough: true
+    - host: "10.96.0.1"
+      passthrough: true
+
+    # --- Catch-all: exchange everything else ---
+    # Any outbound HTTP that isn't explicitly excluded gets its
+    # Authorization header exchanged via RFC 8693. This catches
+    # FQDN, short service names, and raw ClusterIP access alike.
+    - host: "**"
       target_audience: "document-service"
       token_scopes: "openid document-service-aud"
 ---
